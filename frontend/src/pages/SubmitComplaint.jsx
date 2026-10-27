@@ -1,278 +1,229 @@
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { useNavigate, Link } from "react-router-dom";
+import Navbar from "../components/Navbar";
+import { Toast } from "../components/Toast";
+import { Send, ArrowLeft, Paperclip, AlertTriangle, Layers, Tag, AlignLeft } from "lucide-react";
 
 function SubmitComplaint() {
-    const navigate = useNavigate();
-
     const [categories, setCategories] = useState([]);
-
-    const [formData, setFormData] = useState({
-        category: "",
-        subject: "",
-        description: "",
-        priority: "Medium"
-    });
+    const [category, setCategory] = useState("");
+    const [subject, setSubject] = useState("");
+    const [description, setDescription] = useState("");
+    const [priority, setPriority] = useState("Medium");
+    const [fileName, setFileName] = useState("");
 
     const [loading, setLoading] = useState(false);
+    const [toast, setToast] = useState(null);
 
-    // GET CATEGORIES
+    const navigate = useNavigate();
+
     useEffect(() => {
         const token = localStorage.getItem("token");
-
         if (!token) {
             navigate("/");
             return;
         }
 
-        fetch("http://localhost:5000/api/categories")
-            .then((response) => response.json())
-            .then((data) => {
-                if (data.success) {
+        // Fetch categories
+        fetch("http://localhost:5000/api/categories", {
+            headers: { Authorization: `Bearer ${token}` }
+        })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success && data.categories.length > 0) {
                     setCategories(data.categories);
-                } else {
-                    alert(data.message);
+                    setCategory(data.categories[0]._id);
                 }
             })
-            .catch((error) => {
-                console.error("Category Error:", error);
-                alert("Unable to load categories");
-            });
+            .catch(err => console.error("Category fetch error:", err));
     }, [navigate]);
 
-    // HANDLE INPUT
-    const handleChange = (e) => {
-        setFormData({
-            ...formData,
-            [e.target.name]: e.target.value
-        });
+    const showToast = (type, message) => {
+        setToast({ type, message });
+        setTimeout(() => setToast(null), 4000);
     };
 
-    // SUBMIT COMPLAINT
     const handleSubmit = async (e) => {
         e.preventDefault();
 
-        const token = localStorage.getItem("token");
-
-        if (!token) {
-            navigate("/");
+        if (!category || !subject.trim() || !description.trim()) {
+            showToast("error", "Please fill in all required fields.");
             return;
         }
 
         setLoading(true);
+        const token = localStorage.getItem("token");
 
         try {
-            const response = await fetch(
-                "http://localhost:5000/api/complaints",
-                {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        Authorization: `Bearer ${token}`
-                    },
-                    body: JSON.stringify(formData)
-                }
-            );
+            const response = await fetch("http://localhost:5000/api/complaints", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    category,
+                    subject,
+                    description,
+                    priority
+                })
+            });
 
             const data = await response.json();
 
             if (data.success) {
-                alert("Complaint submitted successfully!");
-
-                navigate("/student/complaints");
+                showToast("success", "Complaint submitted successfully!");
+                setTimeout(() => navigate("/student/complaints"), 1200);
             } else {
-                alert(data.message);
+                showToast("error", data.message || "Failed to submit complaint.");
             }
-
         } catch (error) {
-            console.error("Complaint Error:", error);
-            alert("Server error. Please try again.");
+            console.error("Submit error:", error);
+            showToast("error", "Server connection error");
         } finally {
             setLoading(false);
         }
     };
 
     return (
-        <div className="bg-light min-vh-100">
+        <div className="min-vh-100 pb-5" style={{ backgroundColor: "#f8fafc" }}>
+            <Navbar activeTab="dashboard" />
+            <Toast toast={toast} onClose={() => setToast(null)} />
 
-            {/* NAVBAR */}
-            <nav className="navbar navbar-dark bg-primary">
-                <div className="container">
+            <div className="container px-4 mt-4" style={{ maxWidth: "800px" }}>
+                {/* Back Link */}
+                <Link to="/student/dashboard" className="btn btn-sm btn-outline-custom mb-3">
+                    <ArrowLeft size={16} /> Back to Dashboard
+                </Link>
 
-                    <span className="navbar-brand fw-bold">
-                        College Complaint Management System
-                    </span>
-
-                    <button
-                        className="btn btn-light"
-                        onClick={() => navigate("/student/dashboard")}
-                    >
-                        Dashboard
-                    </button>
-
-                </div>
-            </nav>
-
-
-            {/* FORM */}
-            <div className="container mt-4">
-
-                <div className="row justify-content-center">
-
-                    <div className="col-md-8">
-
-                        <div className="card shadow">
-
-                            <div className="card-body p-4">
-
-                                <h2 className="text-center mb-4">
-                                    Submit Complaint
-                                </h2>
-
-                                <form onSubmit={handleSubmit}>
-
-                                    {/* CATEGORY */}
-                                    <div className="mb-3">
-
-                                        <label className="form-label">
-                                            Complaint Category
-                                        </label>
-
-                                        <select
-                                            name="category"
-                                            className="form-select"
-                                            value={formData.category}
-                                            onChange={handleChange}
-                                            required
-                                        >
-
-                                            <option value="">
-                                                Select Category
-                                            </option>
-
-                                            {categories.map((category) => (
-                                                <option
-                                                    key={category._id}
-                                                    value={category._id}
-                                                >
-                                                    {category.name}
-                                                </option>
-                                            ))}
-
-                                        </select>
-
-                                    </div>
-
-
-                                    {/* SUBJECT */}
-                                    <div className="mb-3">
-
-                                        <label className="form-label">
-                                            Subject
-                                        </label>
-
-                                        <input
-                                            type="text"
-                                            name="subject"
-                                            className="form-control"
-                                            placeholder="Enter complaint subject"
-                                            value={formData.subject}
-                                            onChange={handleChange}
-                                            required
-                                        />
-
-                                    </div>
-
-
-                                    {/* DESCRIPTION */}
-                                    <div className="mb-3">
-
-                                        <label className="form-label">
-                                            Description
-                                        </label>
-
-                                        <textarea
-                                            name="description"
-                                            className="form-control"
-                                            rows="5"
-                                            placeholder="Describe your complaint"
-                                            value={formData.description}
-                                            onChange={handleChange}
-                                            required
-                                        ></textarea>
-
-                                    </div>
-
-
-                                    {/* PRIORITY */}
-                                    <div className="mb-3">
-
-                                        <label className="form-label">
-                                            Priority
-                                        </label>
-
-                                        <select
-                                            name="priority"
-                                            className="form-select"
-                                            value={formData.priority}
-                                            onChange={handleChange}
-                                        >
-
-                                            <option value="Low">
-                                                Low
-                                            </option>
-
-                                            <option value="Medium">
-                                                Medium
-                                            </option>
-
-                                            <option value="High">
-                                                High
-                                            </option>
-
-                                        </select>
-
-                                    </div>
-
-
-                                    {/* BUTTONS */}
-                                    <div className="d-flex gap-2">
-
-                                        <button
-                                            type="submit"
-                                            className="btn btn-primary flex-grow-1"
-                                            disabled={loading}
-                                        >
-                                            {loading
-                                                ? "Submitting..."
-                                                : "Submit Complaint"}
-                                        </button>
-
-                                        <button
-                                            type="button"
-                                            className="btn btn-secondary"
-                                            onClick={() =>
-                                                navigate(
-                                                    "/student/dashboard"
-                                                )
-                                            }
-                                        >
-                                            Cancel
-                                        </button>
-
-                                    </div>
-
-                                </form>
-
-                            </div>
-
-                        </div>
-
+                <div className="custom-card p-4 p-md-5">
+                    <div className="border-bottom pb-3 mb-4">
+                        <h3 className="fw-bold text-dark mb-1">Submit New Complaint</h3>
+                        <p className="text-muted small mb-0">
+                            Please provide clear details about your issue so campus staff can inspect and resolve it promptly.
+                        </p>
                     </div>
 
+                    <form onSubmit={handleSubmit}>
+                        {/* Category Selector */}
+                        <div className="mb-4">
+                            <label className="form-label fw-semibold text-secondary small d-flex align-items-center gap-1.5">
+                                <Layers size={16} className="text-primary" /> Complaint Category *
+                            </label>
+                            <select
+                                className="form-select-custom"
+                                value={category}
+                                onChange={(e) => setCategory(e.target.value)}
+                                required
+                            >
+                                {categories.length === 0 && <option value="">Loading categories...</option>}
+                                {categories.map((cat) => (
+                                    <option key={cat._id} value={cat._id}>
+                                        {cat.name}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+
+                        {/* Priority Selector */}
+                        <div className="mb-4">
+                            <label className="form-label fw-semibold text-secondary small d-flex align-items-center gap-1.5">
+                                <AlertTriangle size={16} className="text-warning" /> Priority Level
+                            </label>
+                            <div className="d-flex gap-3">
+                                {["Low", "Medium", "High"].map((prio) => (
+                                    <label
+                                        key={prio}
+                                        className={`flex-grow-1 p-3 rounded-3 border text-center cursor-pointer transition-all ${
+                                            priority === prio
+                                                ? prio === "High"
+                                                    ? "bg-danger text-white border-danger fw-bold"
+                                                    : prio === "Low"
+                                                    ? "bg-success text-white border-success fw-bold"
+                                                    : "bg-warning text-dark border-warning fw-bold"
+                                                : "bg-light text-muted"
+                                        }`}
+                                        style={{ cursor: "pointer" }}
+                                    >
+                                        <input
+                                            type="radio"
+                                            name="priority"
+                                            value={prio}
+                                            checked={priority === prio}
+                                            onChange={(e) => setPriority(e.target.value)}
+                                            className="d-none"
+                                        />
+                                        {prio} Priority
+                                    </label>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Subject */}
+                        <div className="mb-4">
+                            <label className="form-label fw-semibold text-secondary small d-flex align-items-center gap-1.5">
+                                <Tag size={16} className="text-primary" /> Subject / Short Title *
+                            </label>
+                            <input
+                                type="text"
+                                className="form-control-custom"
+                                placeholder="e.g., Water leakage in Hostel Block B ceiling"
+                                value={subject}
+                                onChange={(e) => setSubject(e.target.value)}
+                                required
+                            />
+                        </div>
+
+                        {/* Description */}
+                        <div className="mb-4">
+                            <label className="form-label fw-semibold text-secondary small d-flex align-items-center gap-1.5">
+                                <AlignLeft size={16} className="text-primary" /> Detailed Description *
+                            </label>
+                            <textarea
+                                className="form-control-custom"
+                                rows="5"
+                                placeholder="Describe the issue in detail including room numbers, timestamps, or specific locations..."
+                                value={description}
+                                onChange={(e) => setDescription(e.target.value)}
+                                required
+                            ></textarea>
+                        </div>
+
+                        {/* Attachment Simulator */}
+                        <div className="mb-4">
+                            <label className="form-label fw-semibold text-secondary small d-flex align-items-center gap-1.5">
+                                <Paperclip size={16} className="text-secondary" /> Attachment / Proof (Optional)
+                            </label>
+                            <input
+                                type="file"
+                                className="form-control-custom"
+                                onChange={(e) => setFileName(e.target.files[0]?.name || "")}
+                            />
+                            {fileName && <span className="small text-success mt-1 d-block">Selected: {fileName}</span>}
+                        </div>
+
+                        {/* Submit Button */}
+                        <div className="d-flex justify-content-end gap-3 pt-3 border-top">
+                            <Link to="/student/dashboard" className="btn btn-outline-custom px-4">
+                                Cancel
+                            </Link>
+                            <button
+                                type="submit"
+                                className="btn btn-primary-custom px-4"
+                                disabled={loading}
+                            >
+                                {loading ? (
+                                    <span className="spinner-border spinner-border-sm me-2"></span>
+                                ) : (
+                                    <>
+                                        <Send size={16} /> Submit Complaint
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    </form>
                 </div>
-
             </div>
-
         </div>
     );
 }

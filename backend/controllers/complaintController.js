@@ -1,4 +1,6 @@
 const Complaint = require("../models/Complaint");
+const Assignment = require("../models/Assignment");
+const Feedback = require("../models/Feedback");
 
 // CREATE COMPLAINT
 const createComplaint = async (req, res) => {
@@ -76,27 +78,41 @@ const getMyComplaints = async (req, res) => {
 };
 
 
-// GET SINGLE COMPLAINT BY ID
+// GET SINGLE COMPLAINT BY ID (Supports Student, Staff, Admin)
 const getComplaintById = async (req, res) => {
     try {
+        const query = { _id: req.params.id };
 
-        const complaint = await Complaint.findOne({
-            _id: req.params.id,
-            student: req.user.id
-        })
-            .populate("category", "name");
+        // If student, restrict to their own complaint
+        if (req.user.role === "student") {
+            query.student = req.user.id;
+        }
+
+        const complaint = await Complaint.findOne(query)
+            .populate("student", "name email phone")
+            .populate("category", "name description");
 
         // Complaint not found
         if (!complaint) {
             return res.status(404).json({
                 success: false,
-                message: "Complaint not found"
+                message: "Complaint not found or unauthorized access"
             });
         }
 
+        // Fetch assignment details if any
+        const assignment = await Assignment.findOne({ complaint: complaint._id })
+            .populate("assignedTo", "name email phone")
+            .populate("assignedBy", "name email");
+
+        // Fetch feedback if any
+        const feedback = await Feedback.findOne({ complaint: complaint._id });
+
         res.status(200).json({
             success: true,
-            complaint
+            complaint,
+            assignment: assignment || null,
+            feedback: feedback || null
         });
 
     } catch (error) {
@@ -109,10 +125,9 @@ const getComplaintById = async (req, res) => {
     }
 };
 
-// GET ALL COMPLAINTS - ADMIN
+// GET ALL COMPLAINTS - ADMIN & STAFF
 const getAllComplaints = async (req, res) => {
     try {
-
         const complaints = await Complaint.find()
             .populate("student", "name email")
             .populate("category", "name")
@@ -124,7 +139,6 @@ const getAllComplaints = async (req, res) => {
         });
 
     } catch (error) {
-
         console.error("GET ALL COMPLAINTS ERROR:", error);
 
         res.status(500).json({
@@ -136,40 +150,13 @@ const getAllComplaints = async (req, res) => {
 
 // GET SINGLE COMPLAINT - ADMIN
 const getAdminComplaintById = async (req, res) => {
-    try {
-
-        const complaint = await Complaint.findById(req.params.id)
-            .populate("student", "name email")
-            .populate("category", "name");
-
-        if (!complaint) {
-            return res.status(404).json({
-                success: false,
-                message: "Complaint not found"
-            });
-        }
-
-        res.status(200).json({
-            success: true,
-            complaint
-        });
-
-    } catch (error) {
-
-        console.error("GET ADMIN COMPLAINT ERROR:", error);
-
-        res.status(500).json({
-            success: false,
-            message: "Server error"
-        });
-    }
+    return getComplaintById(req, res);
 };
 
-// UPDATE COMPLAINT STATUS - ADMIN
+// UPDATE COMPLAINT STATUS (ADMIN & STAFF)
 const updateComplaintStatus = async (req, res) => {
     try {
-
-        const { status } = req.body;
+        const { status, resolutionNotes } = req.body;
 
         const allowedStatuses = [
             "Pending",
@@ -195,9 +182,7 @@ const updateComplaintStatus = async (req, res) => {
         }
 
         // Find complaint
-        const complaint = await Complaint.findById(
-            req.params.id
-        );
+        const complaint = await Complaint.findById(req.params.id);
 
         if (!complaint) {
             return res.status(404).json({
@@ -206,12 +191,17 @@ const updateComplaintStatus = async (req, res) => {
             });
         }
 
-        // Update status
+        // Update status & resolution notes
         complaint.status = status;
+        if (resolutionNotes !== undefined) {
+            complaint.resolutionNotes = resolutionNotes;
+        }
 
-        // Set resolvedAt when complaint is resolved
+        // Set resolvedAt when complaint is resolved or closed
         if (status === "Resolved" || status === "Closed") {
-            complaint.resolvedAt = new Date();
+            if (!complaint.resolvedAt) {
+                complaint.resolvedAt = new Date();
+            }
         } else {
             complaint.resolvedAt = null;
         }
@@ -225,12 +215,63 @@ const updateComplaintStatus = async (req, res) => {
         });
 
     } catch (error) {
+        console.error("UPDATE COMPLAINT STATUS ERROR:", error);
 
-        console.error(
-            "UPDATE COMPLAINT STATUS ERROR:",
-            error
-        );
+        res.status(500).json({
+            success: false,
+            message: "Server error"
+        });
+    }
+};
 
+// SUBMIT FEEDBACK FOR RESOLVED COMPLAINT (STUDENT)
+const submitFeedback = async (req, res) => {
+    try {
+        const { rating, comment } = req.body;
+
+        if (!rating || rating < 1 || rating > 5) {
+            return res.status(400).json({
+                success: false,
+                message: "Rating between 1 and 5 is required"
+            });
+        }
+
+        const complaint = await Complaint.findOne({
+            _id: req.params.id,
+            student: req.user.id
+        });
+
+        if (!complaint) {
+            return res.status(404).json({
+                success: false,
+                message: "Complaint not found"
+            });
+        }
+
+        // Check if feedback already submitted
+        let feedback = await Feedback.findOne({ complaint: complaint._id });
+
+        if (feedback) {
+            feedback.rating = rating;
+            feedback.comment = comment || "";
+            await feedback.save();
+        } else {
+            feedback = await Feedback.create({
+                complaint: complaint._id,
+                student: req.user.id,
+                rating,
+                comment: comment || ""
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            message: "Feedback submitted successfully!",
+            feedback
+        });
+
+    } catch (error) {
+        console.error("SUBMIT FEEDBACK ERROR:", error);
         res.status(500).json({
             success: false,
             message: "Server error"
@@ -245,5 +286,6 @@ module.exports = {
     getComplaintById,
     getAllComplaints,
     getAdminComplaintById,
-    updateComplaintStatus
+    updateComplaintStatus,
+    submitFeedback
 };

@@ -63,6 +63,11 @@ const complaintSchema = new mongoose.Schema(
         resolvedAt: {
             type: Date,
             default: null
+        },
+
+        resolutionNotes: {
+            type: String,
+            default: ""
         }
     },
     {

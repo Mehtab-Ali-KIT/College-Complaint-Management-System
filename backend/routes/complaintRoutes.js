@@ -6,7 +6,8 @@ const {
     getComplaintById,
     getAllComplaints,
     updateComplaintStatus,
-    getAdminComplaintById
+    getAdminComplaintById,
+    submitFeedback
 } = require("../controllers/complaintController");
 
 const {
@@ -35,11 +36,11 @@ router.get(
 );
 
 
-// Admin views all complaints
+// Admin / Staff views all complaints
 router.get(
     "/",
     protect,
-    authorizeRoles("admin"),
+    authorizeRoles("admin", "staff"),
     getAllComplaints
 );
 
@@ -47,25 +48,33 @@ router.get(
 router.get(
     "/admin/:id",
     protect,
-    authorizeRoles("admin"),
+    authorizeRoles("admin", "staff"),
     getAdminComplaintById
 );
 
 
-// Admin updates complaint status
+// Admin & Staff update complaint status
 router.put(
     "/:id/status",
     protect,
-    authorizeRoles("admin"),
+    authorizeRoles("admin", "staff"),
     updateComplaintStatus
 );
 
+// Student submits feedback for complaint
+router.post(
+    "/:id/feedback",
+    protect,
+    authorizeRoles("student"),
+    submitFeedback
+);
 
-// Student views single complaint
+
+// View single complaint (Student, Staff, Admin)
 router.get(
     "/:id",
     protect,
-    authorizeRoles("student"),
+    authorizeRoles("student", "staff", "admin"),
     getComplaintById
 );
 

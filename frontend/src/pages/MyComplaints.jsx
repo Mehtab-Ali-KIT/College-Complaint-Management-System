@@ -1,9 +1,14 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
+import Navbar from "../components/Navbar";
+import { StatusBadge, PriorityBadge } from "../components/StatusBadge";
+import { Search, PlusCircle, FileText, Calendar, Eye, ArrowLeft, Filter } from "lucide-react";
 
 function MyComplaints() {
     const [complaints, setComplaints] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [searchQuery, setSearchQuery] = useState("");
+    const [statusFilter, setStatusFilter] = useState("All");
 
     const navigate = useNavigate();
 
@@ -16,135 +21,157 @@ function MyComplaints() {
         }
 
         fetch("http://localhost:5000/api/complaints/my", {
-            method: "GET",
-            headers: {
-                Authorization: `Bearer ${token}`
-            }
+            headers: { Authorization: `Bearer ${token}` }
         })
-            .then((response) => response.json())
+            .then((res) => res.json())
             .then((data) => {
                 if (data.success) {
-                    setComplaints(data.complaints);
-                } else {
-                    alert(data.message);
+                    setComplaints(data.complaints || []);
                 }
-
                 setLoading(false);
             })
-            .catch((error) => {
-                console.error("Error:", error);
-                alert("Unable to load complaints");
+            .catch((err) => {
+                console.error(err);
                 setLoading(false);
             });
     }, [navigate]);
 
+    const filteredComplaints = complaints.filter((c) => {
+        const matchesStatus = statusFilter === "All" || c.status === statusFilter;
+        const matchesSearch =
+            c.subject?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            c.complaintId?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            c.category?.name?.toLowerCase().includes(searchQuery.toLowerCase());
+        return matchesStatus && matchesSearch;
+    });
+
     return (
-        <div className="bg-light min-vh-100">
+        <div className="min-vh-100 pb-5" style={{ backgroundColor: "#f8fafc" }}>
+            <Navbar activeTab="my-complaints" />
 
-            <nav className="navbar navbar-dark bg-primary">
-                <div className="container">
-                    <span className="navbar-brand fw-bold">
-                        College Complaint Management System
-                    </span>
+            <div className="container-fluid px-4 mt-4 max-w-7xl mx-auto" style={{ maxWidth: "1280px" }}>
+                {/* Header Navigation */}
+                <div className="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3 mb-4">
+                    <div>
+                        <Link to="/student/dashboard" className="btn btn-sm btn-outline-custom mb-2">
+                            <ArrowLeft size={14} /> Back to Dashboard
+                        </Link>
+                        <h3 className="fw-bold text-dark mb-1">My Submitted Complaints</h3>
+                        <p className="text-muted small mb-0">View history, tracking status, and resolution updates</p>
+                    </div>
 
-                    <button
-                        className="btn btn-light"
-                        onClick={() => navigate("/student/dashboard")}
-                    >
-                        Dashboard
-                    </button>
-                </div>
-            </nav>
-
-            <div className="container mt-4">
-
-                <div className="d-flex justify-content-between align-items-center mb-4">
-                    <h2 className="fw-bold">My Complaints</h2>
-
-                    <button
-                        className="btn btn-primary"
-                        onClick={() => navigate("/student/complaint")}
-                    >
-                        + New Complaint
-                    </button>
+                    <Link to="/student/complaint" className="btn btn-primary-custom">
+                        <PlusCircle size={18} /> New Complaint
+                    </Link>
                 </div>
 
-                {loading ? (
-                    <div className="text-center">
-                        <p>Loading complaints...</p>
-                    </div>
-                ) : complaints.length === 0 ? (
-                    <div className="alert alert-info">
-                        You have not submitted any complaints yet.
-                    </div>
-                ) : (
-                    <div className="row">
-
-                        {complaints.map((complaint) => (
-                            <div
-                                className="col-md-6 mb-4"
-                                key={complaint._id}
-                            >
-                                <div className="card shadow-sm h-100">
-
-                                    <div className="card-body">
-
-                                        <div className="d-flex justify-content-between">
-                                            <h5 className="fw-bold">
-                                                {complaint.subject}
-                                            </h5>
-
-                                            <span className="badge bg-warning text-dark">
-                                                {complaint.status}
-                                            </span>
-                                        </div>
-
-                                        <hr />
-
-                                        <p>
-                                            <strong>Complaint ID:</strong>{" "}
-                                            {complaint.complaintId}
-                                        </p>
-
-                                        <p>
-                                            <strong>Category:</strong>{" "}
-                                            {complaint.category?.name}
-                                        </p>
-
-                                        <p>
-                                            <strong>Priority:</strong>{" "}
-                                            {complaint.priority}
-                                        </p>
-
-                                        <p>
-                                            <strong>Description:</strong>{" "}
-                                            {complaint.description}
-                                        </p>
-
-                                        <p className="text-muted mb-0">
-                                            Submitted:{" "}
-                                            {new Date(
-                                                complaint.createdAt
-                                            ).toLocaleDateString()}
-                                        </p>
-
-                                        <button
-                                            className="btn btn-primary mt-3"
-                                            onClick={() =>
-                                                navigate(`/student/complaint/${complaint._id}`)
-                                            }
-                                        >
-                                            View Details
-                                        </button>
-
-                                    </div>
-                                </div>
+                {/* Filter and Search Bar Card */}
+                <div className="custom-card p-3 mb-4">
+                    <div className="row g-3 align-items-center">
+                        {/* Search Input */}
+                        <div className="col-md-5">
+                            <div className="position-relative">
+                                <input
+                                    type="text"
+                                    className="form-control-custom ps-5"
+                                    placeholder="Search by ID, title, or category..."
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                />
+                                <Search size={18} className="position-absolute text-muted" style={{ left: "14px", top: "50%", transform: "translateY(-50%)" }} />
                             </div>
-                        ))}
+                        </div>
 
+                        {/* Status Filter Pills */}
+                        <div className="col-md-7">
+                            <div className="d-flex flex-wrap gap-2 justify-content-md-end">
+                                {["All", "Pending", "Assigned", "In Progress", "Resolved", "Closed"].map((status) => (
+                                    <button
+                                        key={status}
+                                        onClick={() => setStatusFilter(status)}
+                                        className={`btn btn-sm ${
+                                            statusFilter === status
+                                                ? "btn-primary-custom"
+                                                : "btn-outline-custom"
+                                        }`}
+                                        style={{ padding: "0.4rem 0.85rem", fontSize: "0.825rem" }}
+                                    >
+                                        {status}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
                     </div>
-                )}
+                </div>
 
+                {/* Complaints List Table */}
+                <div className="custom-card p-4">
+                    {loading ? (
+                        <div className="text-center py-5">
+                            <div className="spinner-border text-primary" role="status"></div>
+                            <p className="text-muted small mt-2">Loading complaints...</p>
+                        </div>
+                    ) : filteredComplaints.length === 0 ? (
+                        <div className="text-center py-5 bg-light rounded-3 border">
+                            <FileText size={44} className="text-muted mb-2" />
+                            <h5>No complaints match your filter</h5>
+                            <p className="text-muted small mb-0">Try changing your search term or filter options.</p>
+                        </div>
+                    ) : (
+                        <div className="table-responsive">
+                            <table className="table-custom">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Category</th>
+                                        <th>Subject</th>
+                                        <th>Priority</th>
+                                        <th>Status</th>
+                                        <th>Submitted On</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {filteredComplaints.map((complaint) => (
+                                        <tr key={complaint._id}>
+                                            <td>
+                                                <span className="fw-bold text-dark">{complaint.complaintId}</span>
+                                            </td>
+                                            <td>
+                                                <span className="badge bg-light text-dark border px-2.5 py-1">
+                                                    {complaint.category?.name || "General"}
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <div className="fw-semibold text-dark" style={{ maxWidth: "280px" }}>
+                                                    {complaint.subject}
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <PriorityBadge priority={complaint.priority} />
+                                            </td>
+                                            <td>
+                                                <StatusBadge status={complaint.status} />
+                                            </td>
+                                            <td className="text-muted small">
+                                                <Calendar size={14} className="me-1" />
+                                                {new Date(complaint.createdAt).toLocaleDateString()}
+                                            </td>
+                                            <td>
+                                                <Link
+                                                    to={`/student/complaint/${complaint._id}`}
+                                                    className="btn btn-sm btn-outline-custom d-inline-flex align-items-center gap-1"
+                                                >
+                                                    <Eye size={14} /> View
+                                                </Link>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
     );

@@ -39,38 +39,39 @@ const assignComplaint = async (req, res) => {
         }
 
         // Check existing assignment
-        const existingAssignment = await Assignment.findOne({
+        let assignment = await Assignment.findOne({
             complaint: complaintId
         });
 
-        if (existingAssignment) {
-            return res.status(400).json({
-                success: false,
-                message: "Complaint is already assigned"
+        if (assignment) {
+            assignment.assignedTo = staffId;
+            assignment.assignedBy = req.user.id;
+            if (remarks) assignment.remarks = remarks;
+            assignment.assignedAt = new Date();
+            await assignment.save();
+        } else {
+            // Create assignment
+            assignment = await Assignment.create({
+                complaint: complaintId,
+                assignedTo: staffId,
+                assignedBy: req.user.id,
+                remarks: remarks || ""
             });
         }
 
-        // Create assignment
-        const assignment = await Assignment.create({
-            complaint: complaintId,
-            assignedTo: staffId,
-            assignedBy: req.user.id,
-            remarks: remarks || ""
-        });
-
-        // Update complaint status
-        complaint.status = "Assigned";
-        await complaint.save();
+        // Update complaint status if pending
+        if (complaint.status === "Pending") {
+            complaint.status = "Assigned";
+            await complaint.save();
+        }
 
         // Populate assignment details
-        const populatedAssignment = await Assignment.findById(
-            assignment._id
-        )
+        const populatedAssignment = await Assignment.findById(assignment._id)
             .populate("complaint")
-            .populate("assignedTo", "name email")
+            .populate("assignedTo", "name email phone")
             .populate("assignedBy", "name email");
 
-        res.status(201).json({
+        res.status(200).json({
             success: true,
             message: "Complaint assigned successfully",
             assignment: populatedAssignment
@@ -92,7 +93,13 @@ const getMyAssignedComplaints = async (req, res) => {
         const assignments = await Assignment.find({
             assignedTo: req.user.id
         })
-            .populate("complaint")
+            .populate({
+                path: "complaint",
+                populate: [
+                    { path: "student", select: "name email phone" },
+                    { path: "category", select: "name" }
+                ]
+            })
             .populate("assignedBy", "name email")
             .sort({ createdAt: -1 });
 

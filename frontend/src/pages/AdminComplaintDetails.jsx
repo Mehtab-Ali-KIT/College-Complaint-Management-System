@@ -1,574 +1,434 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, Link } from "react-router-dom";
+import Navbar from "../components/Navbar";
+import { StatusBadge, PriorityBadge } from "../components/StatusBadge";
+import { Toast } from "../components/Toast";
+import {
+    ArrowLeft,
+    User,
+    Mail,
+    Phone,
+    Calendar,
+    Clock,
+    UserCheck,
+    CheckCircle2,
+    MessageSquare,
+    Send,
+    Star,
+    Layers,
+    Shield,
+    FileText,
+    CheckSquare
+} from "lucide-react";
 
 function AdminComplaintDetails() {
     const { id } = useParams();
     const navigate = useNavigate();
 
     const [complaint, setComplaint] = useState(null);
-    const [status, setStatus] = useState("");
+    const [assignment, setAssignment] = useState(null);
+    const [feedback, setFeedback] = useState(null);
+    const [staffList, setStaffList] = useState([]);
 
-    // Staff states
-    const [staff, setStaff] = useState([]);
+    const [status, setStatus] = useState("");
+    const [resolutionNotes, setResolutionNotes] = useState("");
     const [selectedStaff, setSelectedStaff] = useState("");
+    const [assignRemarks, setAssignRemarks] = useState("");
 
     const [loading, setLoading] = useState(true);
     const [updating, setUpdating] = useState(false);
     const [assigning, setAssigning] = useState(false);
-    const [loadingStaff, setLoadingStaff] = useState(true);
+    const [toast, setToast] = useState(null);
 
-    // Get complaint and staff
-    useEffect(() => {
+    const showToast = (type, message) => {
+        setToast({ type, message });
+        setTimeout(() => setToast(null), 4000);
+    };
+
+    const fetchDetails = () => {
         const token = localStorage.getItem("token");
-        const user = JSON.parse(localStorage.getItem("user"));
+        const user = JSON.parse(localStorage.getItem("user") || "{}");
 
-        if (!token || !user || user.role !== "admin") {
+        if (!token || user.role !== "admin") {
             navigate("/");
             return;
         }
 
-        // Fetch complaint
-        fetch(`http://localhost:5000/api/complaints/admin/${id}`, {
-            method: "GET",
-            headers: {
-                Authorization: `Bearer ${token}`
-            }
-        })
-            .then((response) => response.json())
-            .then((data) => {
-                if (data.success) {
-                    setComplaint(data.complaint);
-                    setStatus(data.complaint.status);
+        Promise.all([
+            fetch(`http://localhost:5000/api/complaints/${id}`, {
+                headers: { Authorization: `Bearer ${token}` }
+            }).then(res => res.json()),
+            fetch("http://localhost:5000/api/staff", {
+                headers: { Authorization: `Bearer ${token}` }
+            }).then(res => res.json())
+        ])
+            .then(([compData, staffData]) => {
+                if (compData.success) {
+                    setComplaint(compData.complaint);
+                    setAssignment(compData.assignment);
+                    setFeedback(compData.feedback);
+                    setStatus(compData.complaint.status);
+                    setResolutionNotes(compData.complaint.resolutionNotes || "");
+                    if (compData.assignment?.assignedTo?._id) {
+                        setSelectedStaff(compData.assignment.assignedTo._id);
+                    }
                 } else {
-                    alert(data.message);
-                    navigate("/admin/dashboard");
+                    showToast("error", compData.message || "Complaint not found.");
+                }
+
+                if (staffData.success) {
+                    setStaffList(staffData.staff || []);
                 }
 
                 setLoading(false);
             })
-            .catch((error) => {
-                console.error("Complaint Error:", error);
-                alert("Unable to load complaint");
+            .catch(err => {
+                console.error("Fetch detail error:", err);
+                showToast("error", "Unable to load complaint details");
                 setLoading(false);
             });
+    };
 
-        // Fetch staff
-        fetch("http://localhost:5000/api/staff", {
-            method: "GET",
-            headers: {
-                Authorization: `Bearer ${token}`
-            }
-        })
-            .then((response) => response.json())
-            .then((data) => {
-                if (data.success) {
-                    setStaff(data.staff);
-                } else {
-                    alert(data.message);
-                }
+    useEffect(() => {
+        fetchDetails();
+    }, [id]);
 
-                setLoadingStaff(false);
-            })
-            .catch((error) => {
-                console.error("Staff Error:", error);
-                setLoadingStaff(false);
-            });
-
-    }, [id, navigate]);
-
-
-    // Assign complaint to staff
     const handleAssignComplaint = async () => {
-        const token = localStorage.getItem("token");
-
         if (!selectedStaff) {
-            alert("Please select a staff member");
+            showToast("error", "Please select a staff member");
             return;
         }
 
         setAssigning(true);
+        const token = localStorage.getItem("token");
 
         try {
-            const response = await fetch(
-                "http://localhost:5000/api/assignments",
-                {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        Authorization: `Bearer ${token}`
-                    },
-                    body: JSON.stringify({
-                        complaintId: id,
-                        staffId: selectedStaff,
-                        remarks: "Complaint assigned by admin"
-                    })
-                }
-            );
+            const response = await fetch("http://localhost:5000/api/assignments", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    complaintId: id,
+                    staffId: selectedStaff,
+                    remarks: assignRemarks || "Assigned by Administrator"
+                })
+            });
 
             const data = await response.json();
 
             if (data.success) {
-                alert("Complaint assigned successfully!");
-
-                // Update complaint on screen
-                setComplaint((prev) => ({
-                    ...prev,
-                    status: "Assigned"
-                }));
-
-                setStatus("Assigned");
-
+                showToast("success", "Complaint assigned successfully!");
+                fetchDetails();
             } else {
-                alert(data.message);
+                showToast("error", data.message || "Failed to assign complaint.");
             }
-
         } catch (error) {
-            console.error("Assign Complaint Error:", error);
-            alert("Unable to assign complaint");
+            console.error("Assign error:", error);
+            showToast("error", "Server connection error");
         } finally {
             setAssigning(false);
         }
     };
 
-
-    // Update complaint status
     const handleStatusUpdate = async () => {
+        setUpdating(true);
         const token = localStorage.getItem("token");
 
-        setUpdating(true);
-
         try {
-            const response = await fetch(
-                `http://localhost:5000/api/complaints/${id}/status`,
-                {
-                    method: "PUT",
-                    headers: {
-                        "Content-Type": "application/json",
-                        Authorization: `Bearer ${token}`
-                    },
-                    body: JSON.stringify({
-                        status: status
-                    })
-                }
-            );
+            const response = await fetch(`http://localhost:5000/api/complaints/${id}/status`, {
+                method: "PUT",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    status,
+                    resolutionNotes
+                })
+            });
 
             const data = await response.json();
 
             if (data.success) {
-                alert("Complaint status updated successfully!");
-
-                setComplaint(data.complaint);
-                setStatus(data.complaint.status);
+                showToast("success", "Complaint status updated successfully!");
+                fetchDetails();
             } else {
-                alert(data.message);
+                showToast("error", data.message || "Failed to update status.");
             }
-
         } catch (error) {
-            console.error("Status Update Error:", error);
-            alert("Unable to update status");
+            console.error("Update status error:", error);
+            showToast("error", "Server connection error");
         } finally {
             setUpdating(false);
         }
     };
 
-
-    // Status badge class
-    const getStatusClass = (status) => {
-        switch (status) {
-            case "Pending":
-                return "bg-warning text-dark";
-
-            case "Assigned":
-                return "bg-info text-dark";
-
-            case "In Progress":
-                return "bg-primary";
-
-            case "Resolved":
-                return "bg-success";
-
-            case "Closed":
-                return "bg-dark";
-
-            default:
-                return "bg-secondary";
-        }
-    };
-
-
-    // Logout
-    const handleLogout = () => {
-        localStorage.removeItem("token");
-        localStorage.removeItem("user");
-        navigate("/");
-    };
-
-
     if (loading) {
         return (
-            <div className="container mt-5 text-center">
-                <h4>Loading complaint...</h4>
+            <div className="min-vh-100" style={{ backgroundColor: "#f8fafc" }}>
+                <Navbar activeTab="admin-dashboard" />
+                <div className="text-center py-5">
+                    <div className="spinner-border text-primary" role="status"></div>
+                    <p className="text-muted small mt-2">Loading complaint details...</p>
+                </div>
             </div>
         );
     }
-
 
     if (!complaint) {
         return (
-            <div className="container mt-5">
-                <div className="alert alert-danger">
-                    Complaint not found.
+            <div className="min-vh-100" style={{ backgroundColor: "#f8fafc" }}>
+                <Navbar activeTab="admin-dashboard" />
+                <div className="container mt-5 text-center">
+                    <div className="custom-card p-5">
+                        <FileText size={48} className="text-muted mb-3" />
+                        <h4>Complaint Not Found</h4>
+                        <Link to="/admin/dashboard" className="btn btn-primary-custom mt-3">
+                            Back to Admin Dashboard
+                        </Link>
+                    </div>
                 </div>
             </div>
         );
     }
 
+    const isResolved = complaint.status === "Resolved" || complaint.status === "Closed";
 
     return (
-        <div className="bg-light min-vh-100">
+        <div className="min-vh-100 pb-5" style={{ backgroundColor: "#f8fafc" }}>
+            <Navbar activeTab="admin-dashboard" />
+            <Toast toast={toast} onClose={() => setToast(null)} />
 
-            {/* NAVBAR */}
+            <div className="container px-4 mt-4 max-w-7xl mx-auto" style={{ maxWidth: "1100px" }}>
+                {/* Back Button */}
+                <Link to="/admin/dashboard" className="btn btn-sm btn-outline-custom mb-3">
+                    <ArrowLeft size={16} /> Back to Dashboard
+                </Link>
 
-            <nav className="navbar navbar-dark bg-dark">
-
-                <div className="container">
-
-                    <span className="navbar-brand fw-bold">
-                        College Complaint Management System
-                    </span>
-
-                    <button
-                        className="btn btn-light"
-                        onClick={handleLogout}
-                    >
-                        Logout
-                    </button>
-
-                </div>
-
-            </nav>
-
-
-            {/* CONTENT */}
-
-            <div className="container mt-4">
-
-                <div className="d-flex justify-content-between align-items-center mb-4">
-
-                    <h2 className="fw-bold">
-                        Complaint Details
-                    </h2>
-
-                    <button
-                        className="btn btn-secondary"
-                        onClick={() => navigate("/admin/dashboard")}
-                    >
-                        ← Back to Dashboard
-                    </button>
-
-                </div>
-
-
-                <div className="card shadow">
-
-                    <div className="card-body p-4">
-
-                        {/* HEADER */}
-
-                        <div className="d-flex justify-content-between align-items-center">
-
-                            <div>
-
-                                <h4 className="fw-bold">
-                                    {complaint.subject}
-                                </h4>
-
-                                <p className="text-muted mb-0">
-                                    {complaint.complaintId}
-                                </p>
-
+                {/* Complaint Header Card */}
+                <div className="custom-card p-4 mb-4">
+                    <div className="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3 border-bottom pb-3 mb-3">
+                        <div>
+                            <div className="d-flex align-items-center gap-2 mb-1">
+                                <span className="fw-bold text-primary">{complaint.complaintId}</span>
+                                <PriorityBadge priority={complaint.priority} />
                             </div>
-
-                            <span
-                                className={`badge ${getStatusClass(
-                                    complaint.status
-                                )}`}
-                            >
-                                {complaint.status}
-                            </span>
-
+                            <h3 className="fw-bold text-dark mb-0">{complaint.subject}</h3>
                         </div>
-
-
-                        <hr />
-
-
-                        {/* STUDENT */}
-
-                        <h5 className="fw-bold">
-                            Student Information
-                        </h5>
-
-                        <div className="row mb-4">
-
-                            <div className="col-md-6">
-
-                                <strong>Name</strong>
-
-                                <p className="text-muted">
-                                    {complaint.student?.name}
-                                </p>
-
-                            </div>
-
-                            <div className="col-md-6">
-
-                                <strong>Email</strong>
-
-                                <p className="text-muted">
-                                    {complaint.student?.email}
-                                </p>
-
-                            </div>
-
+                        <div>
+                            <StatusBadge status={complaint.status} />
                         </div>
-
-
-                        {/* COMPLAINT */}
-
-                        <h5 className="fw-bold">
-                            Complaint Information
-                        </h5>
-
-                        <div className="row">
-
-                            <div className="col-md-6 mb-3">
-
-                                <strong>Category</strong>
-
-                                <p className="text-muted">
-                                    {complaint.category?.name}
-                                </p>
-
-                            </div>
-
-
-                            <div className="col-md-6 mb-3">
-
-                                <strong>Priority</strong>
-
-                                <p className="text-muted">
-                                    {complaint.priority}
-                                </p>
-
-                            </div>
-
-
-                            <div className="col-md-6 mb-3">
-
-                                <strong>Submitted Date</strong>
-
-                                <p className="text-muted">
-                                    {new Date(
-                                        complaint.createdAt
-                                    ).toLocaleString()}
-                                </p>
-
-                            </div>
-
-
-                            <div className="col-md-6 mb-3">
-
-                                <strong>Last Updated</strong>
-
-                                <p className="text-muted">
-                                    {new Date(
-                                        complaint.updatedAt
-                                    ).toLocaleString()}
-                                </p>
-
-                            </div>
-
-                        </div>
-
-
-                        {/* DESCRIPTION */}
-
-                        <h5 className="fw-bold mt-3">
-                            Description
-                        </h5>
-
-                        <div className="bg-light p-3 rounded mb-4">
-                            {complaint.description}
-                        </div>
-
-
-                        {/* STAFF ASSIGNMENT */}
-
-                        <div className="card border-success mb-4">
-
-                            <div className="card-body">
-
-                                <h5 className="fw-bold">
-                                    Assign Complaint to Staff
-                                </h5>
-
-                                <p className="text-muted">
-                                    Select a staff member to handle this
-                                    complaint.
-                                </p>
-
-
-                                <div className="row align-items-end">
-
-                                    <div className="col-md-8">
-
-                                        <label className="form-label">
-                                            Select Staff
-                                        </label>
-
-                                        <select
-                                            className="form-select"
-                                            value={selectedStaff}
-                                            onChange={(e) =>
-                                                setSelectedStaff(
-                                                    e.target.value
-                                                )
-                                            }
-                                            disabled={
-                                                loadingStaff || assigning
-                                            }
-                                        >
-
-                                            <option value="">
-                                                Select Staff
-                                            </option>
-
-                                            {loadingStaff ? (
-                                                <option disabled>
-                                                    Loading staff...
-                                                </option>
-                                            ) : staff.length === 0 ? (
-                                                <option disabled>
-                                                    No staff available
-                                                </option>
-                                            ) : (
-                                                staff.map((member) => (
-                                                    <option
-                                                        key={member._id}
-                                                        value={member._id}
-                                                    >
-                                                        {member.name} -{" "}
-                                                        {member.email}
-                                                    </option>
-                                                ))
-                                            )}
-
-                                        </select>
-
-                                    </div>
-
-
-                                    <div className="col-md-4 mt-3 mt-md-0">
-
-                                        <button
-                                            className="btn btn-success w-100"
-                                            onClick={handleAssignComplaint}
-                                            disabled={
-                                                !selectedStaff || assigning
-                                            }
-                                        >
-                                            {assigning
-                                                ? "Assigning..."
-                                                : "Assign Complaint"}
-                                        </button>
-
-                                    </div>
-
-                                </div>
-
-                            </div>
-
-                        </div>
-
-
-                        {/* STATUS UPDATE */}
-
-                        <div className="card border-primary">
-
-                            <div className="card-body">
-
-                                <h5 className="fw-bold">
-                                    Update Complaint Status
-                                </h5>
-
-                                <div className="row align-items-end">
-
-                                    <div className="col-md-8">
-
-                                        <label className="form-label">
-                                            Select Status
-                                        </label>
-
-                                        <select
-                                            className="form-select"
-                                            value={status}
-                                            onChange={(e) =>
-                                                setStatus(e.target.value)
-                                            }
-                                        >
-
-                                            <option value="Pending">
-                                                Pending
-                                            </option>
-
-                                            <option value="Assigned">
-                                                Assigned
-                                            </option>
-
-                                            <option value="In Progress">
-                                                In Progress
-                                            </option>
-
-                                            <option value="Resolved">
-                                                Resolved
-                                            </option>
-
-                                            <option value="Closed">
-                                                Closed
-                                            </option>
-
-                                        </select>
-
-                                    </div>
-
-
-                                    <div className="col-md-4 mt-3 mt-md-0">
-
-                                        <button
-                                            className="btn btn-primary w-100"
-                                            onClick={handleStatusUpdate}
-                                            disabled={updating}
-                                        >
-                                            {updating
-                                                ? "Updating..."
-                                                : "Update Status"}
-                                        </button>
-
-                                    </div>
-
-                                </div>
-
-                            </div>
-
-                        </div>
-
                     </div>
 
+                    <div className="row g-3 text-muted small">
+                        <div className="col-sm-4">
+                            <span className="d-block text-uppercase fw-semibold text-secondary" style={{ fontSize: "0.7rem" }}>Category</span>
+                            <span className="fw-semibold text-dark fs-6">{complaint.category?.name || "General"}</span>
+                        </div>
+                        <div className="col-sm-4">
+                            <span className="d-block text-uppercase fw-semibold text-secondary" style={{ fontSize: "0.7rem" }}>Submitted On</span>
+                            <span className="fw-semibold text-dark fs-6">{new Date(complaint.createdAt).toLocaleString()}</span>
+                        </div>
+                        <div className="col-sm-4">
+                            <span className="d-block text-uppercase fw-semibold text-secondary" style={{ fontSize: "0.7rem" }}>Last Update</span>
+                            <span className="fw-semibold text-dark fs-6">{new Date(complaint.updatedAt).toLocaleString()}</span>
+                        </div>
+                    </div>
                 </div>
 
-            </div>
+                <div className="row g-4">
+                    {/* Left Column: Complaint Body & Timeline */}
+                    <div className="col-lg-7">
+                        {/* Description */}
+                        <div className="custom-card p-4 mb-4">
+                            <h5 className="fw-bold text-dark mb-3">Issue Description</h5>
+                            <div className="p-3 bg-light rounded-3 border text-dark lead fs-6 lh-base mb-3">
+                                {complaint.description}
+                            </div>
+                        </div>
 
+                        {/* Lifecycle Progress Timeline */}
+                        <div className="custom-card p-4 mb-4">
+                            <h5 className="fw-bold text-dark mb-3">Resolution Progress Timeline</h5>
+                            <div className="timeline">
+                                {/* Step 1: Created */}
+                                <div className="timeline-item">
+                                    <div className="timeline-dot completed">
+                                        <CheckCircle2 size={12} />
+                                    </div>
+                                    <div className="fw-bold text-dark">Complaint Submitted</div>
+                                    <div className="text-muted small">
+                                        {new Date(complaint.createdAt).toLocaleString()}
+                                    </div>
+                                </div>
+
+                                {/* Step 2: Assigned */}
+                                <div className="timeline-item">
+                                    <div className={`timeline-dot ${assignment ? "completed" : ""}`}>
+                                        <UserCheck size={12} />
+                                    </div>
+                                    <div className="fw-bold text-dark">
+                                        {assignment ? `Assigned to ${assignment.assignedTo?.name}` : "Pending Staff Assignment"}
+                                    </div>
+                                    {assignment && (
+                                        <div className="text-muted small">
+                                            Remarks: {assignment.remarks || "Assigned by Admin"} • {new Date(assignment.assignedAt).toLocaleDateString()}
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Step 3: Resolution Status */}
+                                <div className="timeline-item">
+                                    <div className={`timeline-dot ${isResolved ? "completed" : ""}`}>
+                                        <CheckSquare size={12} />
+                                    </div>
+                                    <div className="fw-bold text-dark">
+                                        {isResolved ? `Resolved (${complaint.status})` : `Current Status: ${complaint.status}`}
+                                    </div>
+                                    {complaint.resolutionNotes && (
+                                        <div className="p-2.5 bg-success-subtle text-success-emphasis rounded-3 border border-success-subtle small mt-1">
+                                            <strong>Resolution Note:</strong> {complaint.resolutionNotes}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Student Feedback if available */}
+                        {feedback && (
+                            <div className="custom-card p-4 mb-4 border-success">
+                                <h5 className="fw-bold text-success mb-2 d-flex align-items-center gap-1.5">
+                                    <Star size={18} fill="#10b981" /> Student Feedback
+                                </h5>
+                                <div className="d-flex align-items-center gap-1 mb-2">
+                                    {[1, 2, 3, 4, 5].map(star => (
+                                        <Star
+                                            key={star}
+                                            size={18}
+                                            fill={star <= feedback.rating ? "#f59e0b" : "none"}
+                                            color={star <= feedback.rating ? "#f59e0b" : "#cbd5e1"}
+                                        />
+                                    ))}
+                                    <span className="fw-bold text-dark ms-2">{feedback.rating} / 5 Stars</span>
+                                </div>
+                                <p className="text-muted small mb-0 font-italic">"{feedback.comment || "No comment left."}"</p>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Right Column: Admin Actions & Student Profile */}
+                    <div className="col-lg-5">
+                        {/* Student Info Card */}
+                        <div className="custom-card p-4 mb-4">
+                            <h6 className="fw-bold text-dark mb-3">Student Information</h6>
+                            <div className="d-flex align-items-center gap-3 mb-3">
+                                <div className="brand-icon-box" style={{ width: "42px", height: "42px", borderRadius: "50%" }}>
+                                    <User size={20} />
+                                </div>
+                                <div>
+                                    <div className="fw-bold text-dark">{complaint.student?.name || "Student Name"}</div>
+                                    <span className="badge bg-primary-light text-primary" style={{ fontSize: "0.7rem" }}>
+                                        Student Account
+                                    </span>
+                                </div>
+                            </div>
+                            <div className="d-flex flex-column gap-2 text-muted small">
+                                <div className="d-flex align-items-center gap-2">
+                                    <Mail size={15} className="text-primary" />
+                                    <span>{complaint.student?.email || "N/A"}</span>
+                                </div>
+                                <div className="d-flex align-items-center gap-2">
+                                    <Phone size={15} className="text-success" />
+                                    <span>{complaint.student?.phone || "Phone not provided"}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Staff Assignment Card */}
+                        <div className="custom-card p-4 mb-4">
+                            <h6 className="fw-bold text-dark mb-2">Assign Complaint to Staff</h6>
+                            <p className="text-muted small mb-3">Delegate this issue to a designated staff supervisor.</p>
+
+                            <div className="mb-3">
+                                <label className="form-label small fw-semibold text-secondary">Select Staff Member</label>
+                                <select
+                                    className="form-select-custom"
+                                    value={selectedStaff}
+                                    onChange={e => setSelectedStaff(e.target.value)}
+                                >
+                                    <option value="">-- Choose Staff Member --</option>
+                                    {staffList.map(s => (
+                                        <option key={s._id} value={s._id}>
+                                            {s.name} ({s.email})
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div className="mb-3">
+                                <label className="form-label small fw-semibold text-secondary">Assignment Remarks</label>
+                                <textarea
+                                    className="form-control-custom"
+                                    rows="2"
+                                    placeholder="Enter instructions or context..."
+                                    value={assignRemarks}
+                                    onChange={e => setAssignRemarks(e.target.value)}
+                                ></textarea>
+                            </div>
+
+                            <button
+                                className="btn btn-primary-custom w-100 justify-content-center"
+                                onClick={handleAssignComplaint}
+                                disabled={assigning || !selectedStaff}
+                            >
+                                {assigning ? "Assigning..." : "Save Assignment"}
+                            </button>
+                        </div>
+
+                        {/* Status & Resolution Update Card */}
+                        <div className="custom-card p-4">
+                            <h6 className="fw-bold text-dark mb-2">Update Status & Resolution Notes</h6>
+                            <p className="text-muted small mb-3">Change complaint status or add official action notes.</p>
+
+                            <div className="mb-3">
+                                <label className="form-label small fw-semibold text-secondary">Complaint Status</label>
+                                <select
+                                    className="form-select-custom"
+                                    value={status}
+                                    onChange={e => setStatus(e.target.value)}
+                                >
+                                    <option value="Pending">Pending</option>
+                                    <option value="Assigned">Assigned</option>
+                                    <option value="In Progress">In Progress</option>
+                                    <option value="Resolved">Resolved</option>
+                                    <option value="Closed">Closed</option>
+                                </select>
+                            </div>
+
+                            <div className="mb-3">
+                                <label className="form-label small fw-semibold text-secondary">Resolution Notes / Comments</label>
+                                <textarea
+                                    className="form-control-custom"
+                                    rows="3"
+                                    placeholder="Explain the resolution details or status update..."
+                                    value={resolutionNotes}
+                                    onChange={e => setResolutionNotes(e.target.value)}
+                                ></textarea>
+                            </div>
+
+                            <button
+                                className="btn btn-outline-custom w-100 justify-content-center"
+                                onClick={handleStatusUpdate}
+                                disabled={updating}
+                            >
+                                {updating ? "Updating..." : "Update Status & Notes"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     );
 }
